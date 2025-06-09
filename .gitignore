@@ -1,0 +1,14 @@
+# python stuff
+__pycache__
+env
+
+# pytorch models
+*.pt
+
+
+# device network mount
+laptop_shared
+
+# video sources
+sources
+
