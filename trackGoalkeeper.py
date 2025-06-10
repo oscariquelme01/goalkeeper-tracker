@@ -1,9 +1,10 @@
 import cv2
-import numpy as np
 from EquirectProcessor import EquirectProcessor
 from util import pick_file_from_directory, replace_immediate_parent
 
 # Define the 6 standard view directions (yaw, pitch in degrees)
+# The first value (yaw) indexes the horizontal view (360 degrees) 0 -> front, 180 (or -180) -> back and so
+# The second value (pitch) indexes the vertical view (180 degrees) 0 -> horizon, -> 90 up, -90 -> down and so 
 VIEWS = {
     "front": (0, 0),
     "right": (90, 0),
@@ -25,8 +26,9 @@ if not input_file:
     print("Failed to get input file")
     exit()
 
-# Change parent dir ('equirectangular') to 'perspective'
-output_file = replace_immediate_parent(input_file, 'perspective')
+# TODO: improve this!!
+# Change parent dir ('equirectangular') to 'edited'
+output_file = replace_immediate_parent(input_file, 'edited')
 
 # Initialize video capture
 cap = cv2.VideoCapture(input_file)
@@ -40,22 +42,12 @@ if not ret:
     exit()
 
 # Initialize processor and precompute mappings
+# TODO: to be fair OUTPUT_SIZE doesn't necesarily need to the equal to the generated perspective images
 processor = EquirectProcessor(VIEWS, FOV, OUTPUT_SIZE, USE_GPU)
 processor.precompute_mappings(first_frame.shape)
 
-# Get output dimensions from first processed frame
-views_sample = processor.process_frame(first_frame)
-
-# Combine the first processed frame views
-top = np.hstack(views_sample[:3])     # front, right, back
-bottom = np.hstack(views_sample[3:])  # left, up, down
-
-combined_sample = np.vstack([top, bottom])
-
-output_height, output_width = combined_sample.shape[:2]
-
-# Reset video and setup output
-cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+# Setup output video to the configured OUTPUT_SIZE
+output_height, output_width = OUTPUT_SIZE
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 out = cv2.VideoWriter(output_file, fourcc, fps, (output_width, output_height))
 
@@ -72,15 +64,11 @@ while True:
     if not ret:
         break
     
-    # Process frame retrieve all the views
+    # Process frame retrieving all the views
     views = processor.process_frame(frame)
 
-    # Combine views into grid
-    top = np.hstack(views[:3])     # front, right, back
-    bottom = np.hstack(views[3:])  # left, up, down
-    combined = np.vstack([top, bottom])
-
-    out.write(combined)
+    # TODO: write the processed view!!
+    out.write(frame)
     
     frame_count += 1
     

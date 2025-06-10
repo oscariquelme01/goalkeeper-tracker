@@ -59,6 +59,7 @@ class EquirectProcessor:
         self.fov = fov
         self.output_size = output_size
         self.use_gpu = use_gpu and cv2.cuda.getCudaEnabledDeviceCount() > 0
+        print(cv2.cuda.getCudaEnabledDeviceCount())
         self.num_workers = num_workers or min(len(views), 6)
         self.mappings = None
         self.gpu_mappings = None
