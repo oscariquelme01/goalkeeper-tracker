@@ -6,7 +6,7 @@ import math
 def remap_view(args):
     """Worker function for parallel remapping"""
     frame, uf, vf = args
-    return cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP)
+    return cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP) #type: ignore
 
 def compute_mapping_tables(equi_shape, fov_deg, pitch_deg, yaw_deg, out_res=(640, 480)):
     """Precompute mapping tables for remapping"""
@@ -54,18 +54,21 @@ def compute_mapping_tables(equi_shape, fov_deg, pitch_deg, yaw_deg, out_res=(640
 
 
 class EquirectProcessor:
-    def __init__(self, views, fov=90, output_size=(640, 480), use_gpu=True, num_workers=None):
+    def __init__(self, views: dict[str, tuple[int, int]], fov=90, output_size=(640, 480), use_gpu=True, num_workers=None):
+        if not isinstance(views, dict):
+            raise TypeError("views must be a dictionary with format: {'view_name': (yaw_deg, pitch_deg)}")
+        
         self.views = views
         self.fov = fov
         self.output_size = output_size
-        self.use_gpu = use_gpu and cv2.cuda.getCudaEnabledDeviceCount() > 0
-        print(cv2.cuda.getCudaEnabledDeviceCount())
+        self.use_gpu = use_gpu and cv2.cuda.getCudaEnabledDeviceCount() > 0  # type: ignore
+        print(cv2.cuda.getCudaEnabledDeviceCount())  # type: ignore
         self.num_workers = num_workers or min(len(views), 6)
         self.mappings = None
         self.gpu_mappings = None
         
         if self.use_gpu:
-            print(f"GPU acceleration enabled with {cv2.cuda.getCudaEnabledDeviceCount()} CUDA devices")
+            print(f"GPU acceleration enabled with {cv2.cuda.getCudaEnabledDeviceCount()} CUDA devices")  # type: ignore
         else:
             print(f"Using CPU with {self.num_workers} workers")
     
@@ -83,35 +86,38 @@ class EquirectProcessor:
             
             if self.use_gpu:
                 # Upload mapping tables to GPU
-                gpu_uf = cv2.cuda_GpuMat()
-                gpu_vf = cv2.cuda_GpuMat()
-                gpu_uf.upload(uf)
-                gpu_vf.upload(vf)
+                gpu_uf = cv2.cuda_GpuMat()  # type: ignore
+                gpu_vf = cv2.cuda_GpuMat()  # type: ignore
+                gpu_uf.upload(uf)  # type: ignore
+                gpu_vf.upload(vf)  # type: ignore
                 self.gpu_mappings[view_name] = (gpu_uf, gpu_vf)
     
     def process_frame_gpu(self, frame):
         """Process frame using GPU acceleration"""
-        views = []
-        gpu_frame = cv2.cuda_GpuMat()
-        gpu_frame.upload(frame)
+        views = {}
+        gpu_frame = cv2.cuda_GpuMat()  # type: ignore
+        gpu_frame.upload(frame)  # type: ignore
         
         for view_name in self.views.keys():
             gpu_uf, gpu_vf = self.gpu_mappings[view_name]
-            gpu_result = cv2.cuda.remap(gpu_frame, gpu_uf, gpu_vf, cv2.INTER_LINEAR)
+            gpu_result = cv2.cuda.remap(gpu_frame, gpu_uf, gpu_vf, cv2.INTER_LINEAR)  # type: ignore
             
             # Download result from GPU
-            result = gpu_result.download()
-            views.append(result)
+            result = gpu_result.download()  # type: ignore
+            views[view_name] = result
         
         return views
     
     def process_frame_cpu_parallel(self, frame):
         """Process frame using CPU parallelization"""
         remap_args = [(frame, uf, vf) for uf, vf in self.mappings.values()]
+        view_names = list(self.views.keys())
         
         with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-            views = list(executor.map(remap_view, remap_args))
+            view_results = list(executor.map(remap_view, remap_args))
         
+        # Convert list to dictionary with view names
+        views = dict(zip(view_names, view_results))
         return views
     
     def process_frame_cpu_sequential(self, frame):
@@ -134,3 +140,30 @@ class EquirectProcessor:
         
         return views
 
+    def remap_single_view(self, frame, uf, vf):
+        """
+        Remap a single view given mapping coordinates
+        
+        Args:
+            frame: Input equirectangular frame
+            uf: U (horizontal) mapping coordinates array
+            vf: V (vertical) mapping coordinates array
+            
+        Returns:
+            Remapped view as numpy array
+        """
+        if self.use_gpu:
+            # GPU version
+            gpu_frame = cv2.cuda_GpuMat()  # type: ignore
+            gpu_frame.upload(frame)  # type: ignore
+            
+            gpu_uf = cv2.cuda_GpuMat()  # type: ignore
+            gpu_vf = cv2.cuda_GpuMat()  # type: ignore
+            gpu_uf.upload(uf)  # type: ignore
+            gpu_vf.upload(vf)  # type: ignore
+            
+            gpu_result = cv2.cuda.remap(gpu_frame, gpu_uf, gpu_vf, cv2.INTER_LINEAR)  # type: ignore
+            return gpu_result.download()  # type: ignore
+        else:
+            # CPU version
+            return cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP) #type: ignore
