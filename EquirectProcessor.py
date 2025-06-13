@@ -8,6 +8,24 @@ def remap_view(args):
     frame, uf, vf = args
     return cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP) #type: ignore
 
+
+def remap_single_view(frame, yaw_deg, pitch_deg, fov=90, output_size=(640, 480)):
+    """
+    Remap a single view given mapping coordinates
+    
+    Args:
+        frame: Input equirectangular frame
+        yaw_deg: yaw (horizontal) mapping coordinates array
+        pitch_deg: pitch (vertical) mapping coordinates array
+        fov: the field of view for the remap
+        output_size: touple containing (width, height) for the output view
+        
+    Returns:
+        Remapped view as numpy array
+    """
+    uf, vf = compute_mapping_tables(frame.shape, fov, pitch_deg, yaw_deg, output_size)
+    return cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP) #type: ignore
+
 def compute_mapping_tables(equi_shape, fov_deg, pitch_deg, yaw_deg, out_res=(640, 480)):
     """Precompute mapping tables for remapping"""
     height, width = out_res
@@ -54,6 +72,12 @@ def compute_mapping_tables(equi_shape, fov_deg, pitch_deg, yaw_deg, out_res=(640
 
 
 class EquirectProcessor:
+    """
+    This class will encapsulate all the functionality needed to process equirectangular images into perspective images.
+    It will try to use the gpu unless it is specified otherwise, in which case it will try to use cpu paralellization.
+    It supports both processing images into a 6 cube perspective ('front', 'back', 'right', ...) and getting a single perspective view with the specified angles (theta and phi).
+    All units for the views and the FOV should be expressed in degrees, not radians
+    """
     def __init__(self, views: dict[str, tuple[int, int]], fov=90, output_size=(640, 480), use_gpu=True, num_workers=None):
         if not isinstance(views, dict):
             raise TypeError("views must be a dictionary with format: {'view_name': (yaw_deg, pitch_deg)}")
@@ -62,10 +86,9 @@ class EquirectProcessor:
         self.fov = fov
         self.output_size = output_size
         self.use_gpu = use_gpu and cv2.cuda.getCudaEnabledDeviceCount() > 0  # type: ignore
-        print(cv2.cuda.getCudaEnabledDeviceCount())  # type: ignore
         self.num_workers = num_workers or min(len(views), 6)
-        self.mappings = None
-        self.gpu_mappings = None
+        self.mappings = {}
+        self.gpu_mappings = {}
         
         if self.use_gpu:
             print(f"GPU acceleration enabled with {cv2.cuda.getCudaEnabledDeviceCount()} CUDA devices")  # type: ignore
@@ -73,13 +96,9 @@ class EquirectProcessor:
             print(f"Using CPU with {self.num_workers} workers")
     
     def precompute_mappings(self, equi_shape):
-        """Precompute all mapping tables"""
+        """Precompute all mapping tables for the most common views"""
         print("Precomputing mapping tables...")
-        self.mappings = {}
-        
-        if self.use_gpu:
-            self.gpu_mappings = {}
-        
+
         for view_name, (yaw_deg, pitch_deg) in self.views.items():
             uf, vf = compute_mapping_tables(equi_shape, self.fov, pitch_deg, yaw_deg, self.output_size)
             self.mappings[view_name] = (uf, vf)
@@ -90,6 +109,7 @@ class EquirectProcessor:
                 gpu_vf = cv2.cuda_GpuMat()  # type: ignore
                 gpu_uf.upload(uf)  # type: ignore
                 gpu_vf.upload(vf)  # type: ignore
+
                 self.gpu_mappings[view_name] = (gpu_uf, gpu_vf)
     
     def process_frame_gpu(self, frame):
@@ -124,7 +144,7 @@ class EquirectProcessor:
         """Process frame sequentially on CPU"""
         views = []
         for uf, vf in self.mappings.values():
-            view = cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP)
+            view = cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP) #type: ignore
             views.append(view)
         return views
     
@@ -139,31 +159,3 @@ class EquirectProcessor:
         
         
         return views
-
-    def remap_single_view(self, frame, uf, vf):
-        """
-        Remap a single view given mapping coordinates
-        
-        Args:
-            frame: Input equirectangular frame
-            uf: U (horizontal) mapping coordinates array
-            vf: V (vertical) mapping coordinates array
-            
-        Returns:
-            Remapped view as numpy array
-        """
-        if self.use_gpu:
-            # GPU version
-            gpu_frame = cv2.cuda_GpuMat()  # type: ignore
-            gpu_frame.upload(frame)  # type: ignore
-            
-            gpu_uf = cv2.cuda_GpuMat()  # type: ignore
-            gpu_vf = cv2.cuda_GpuMat()  # type: ignore
-            gpu_uf.upload(uf)  # type: ignore
-            gpu_vf.upload(vf)  # type: ignore
-            
-            gpu_result = cv2.cuda.remap(gpu_frame, gpu_uf, gpu_vf, cv2.INTER_LINEAR)  # type: ignore
-            return gpu_result.download()  # type: ignore
-        else:
-            # CPU version
-            return cv2.remap(frame, uf, vf, cv2.INTER_LINEAR, cv2.BORDER_WRAP) #type: ignore

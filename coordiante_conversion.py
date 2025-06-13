@@ -1,110 +1,92 @@
 import numpy as np
-import cv2
 
-def normalize(v):
-    return v / np.linalg.norm(v)
+def yolo_box_to_yaw_pitch(x1, y1, x2, y2, perspective_width, perspective_height, 
+                                camera_yaw, camera_pitch, camera_fov):
+    """
+    Convert YOLO bounding box coordinates to yaw/pitch angles in equirectangular space.
+    Simple approach using direct angular mapping.
+    
+    Args:
+        x1, y1, x2, y2: Bounding box coordinates in perspective image
+        perspective_width, perspective_height: Dimensions of perspective image
+        camera_yaw: Camera yaw angle in degrees (0-360)
+        camera_pitch: Camera pitch angle in degrees (-90 to 90)
+        camera_fov: Camera field of view in degrees
+    
+    Returns:
+        tuple: (yaw, pitch) in degrees pointing to box center
+    """
+    
+    # Find center of bounding box
+    box_center_x = (x1 + x2) / 2
+    box_center_y = (y1 + y2) / 2
+    
+    # Convert to normalized coordinates relative to image center
+    # Range: [-1, 1] where 0 is center
+    norm_x = (box_center_x - perspective_width/2) / (perspective_width/2)
+    norm_y = (box_center_y - perspective_height/2) / (perspective_height/2)
+    
+    # Convert normalized coordinates to angular offsets
+    # Assume square pixels and symmetric FOV
+    half_fov = camera_fov / 2
+    
+    # Angular offset from camera center (in degrees)
+    offset_yaw = norm_x * half_fov
+    offset_pitch = -norm_y * half_fov  # Negative because Y increases downward in images
+    
+    # Add offsets to camera orientation
+    target_yaw = camera_yaw + offset_yaw
+    target_pitch = camera_pitch + offset_pitch
+    
+    # Normalize yaw to [0, 360) range
+    target_yaw = target_yaw % 360
+    
+    # Clamp pitch to valid range
+    target_pitch = np.clip(target_pitch, -90, 90)
+    
+    return target_yaw, target_pitch
 
-def rotation_matrix_y(angle):
-    c, s = np.cos(angle), np.sin(angle)
-    return np.array([
-        [ c, 0, s],
-        [ 0, 1, 0],
-        [-s, 0, c]
-    ])
 
-def rotation_matrix_x(angle):
-    c, s = np.cos(angle), np.sin(angle)
-    return np.array([
-        [1,  0,  0],
-        [0,  c, -s],
-        [0,  s,  c]
-    ])
+def equirectangular_to_pixel(yaw, pitch, equirect_width, equirect_height):
+    """Convert yaw/pitch to equirectangular pixel coordinates."""
+    u = yaw / 360.0
+    v = (90 - pitch) / 180.0  # Note: 90 - pitch for typical equirectangular format
+    
+    x = u * equirect_width
+    y = v * equirect_height
+    
+    return x, y
 
-def get_face_rotation(face):
-    # Returns a rotation matrix from local face to global direction
-    if face == "front":
-        return np.eye(3)
-    elif face == "right":
-        return rotation_matrix_y(-np.pi / 2)  # Try negative again
-    elif face == "back":
-        return rotation_matrix_y(np.pi)
-    elif face == "left":
-        return rotation_matrix_y(np.pi / 2)   # Try positive again  
-    elif face == "top":
-        return rotation_matrix_x(np.pi / 2)
-    elif face == "bottom":
-        return rotation_matrix_x(-np.pi / 2)
-    else:
-        raise ValueError("Unknown face: " + face)
 
-def pixel_to_spherical(x, y, W, H, fov_deg, face):
-    # Step 1: Normalize pixel coordinates to [-1, 1]
-    nx = (x / W) * 2 - 1
-    ny = 1 - (y / H) * 2  # flipped Y
+# Test both methods
+if __name__ == "__main__":
+    # YOLO bounding box
+    x1, y1, x2, y2 = 100, 150, 300, 350
     
-    # Step 2: Convert to 3D direction in camera space
-    fov = np.radians(fov_deg)
-    f = 1 / np.tan(fov / 2)
-    dir_cam = np.array([nx, ny, -f])
-    dir_cam = normalize(dir_cam)
+    # Image dimensions
+    perspective_width = 640
+    perspective_height = 480
+    equirect_width = 2048
+    equirect_height = 1024
     
-    # Step 3: Rotate into global direction based on cubemap face
-    rot = get_face_rotation(face)
-    dir_global = rot @ dir_cam  # matrix multiply
+    # Camera parameters
+    camera_yaw = 90    # Looking right (east)
+    camera_pitch = 0   # Level
+    camera_fov = 60    # 60 degree FOV
     
-    # Step 4: Convert to spherical coordinates
-    xg, yg, zg = dir_global
-    theta = np.arctan2(xg, -zg)  # azimuth
-    phi = np.arcsin(yg)          # elevation
+    print("YOLO box center:", (x1+x2)/2, (y1+y2)/2)
+    print("Image center:", perspective_width/2, perspective_height/2)
+    print("Box offset from center:", (x1+x2)/2 - perspective_width/2, (y1+y2)/2 - perspective_height/2)
+    print()
     
-    return theta, phi
-
-def perspective_from_equirect(equirect_img, theta_center, phi_center, fov_deg, out_w, out_h):
-    h_equi, w_equi, *_ = equirect_img.shape  # Fixed typo here
-    fov = np.radians(fov_deg)
+    # Simple method
+    yaw1, pitch1 = yolo_box_to_yaw_pitch(x1, y1, x2, y2, perspective_width, perspective_height,
+                                               camera_yaw, camera_pitch, camera_fov)
+    print(f"Yaw={yaw1:.2f}°, Pitch={pitch1:.2f}°")
     
-    # Step 1: Create normalized image plane coordinates
-    x = np.linspace(-1, 1, out_w)
-    y = np.linspace(-1, 1, out_h)
-    xv, yv = np.meshgrid(x, -y)  # flip Y to match image coordinates
-    f = 1 / np.tan(fov / 2)
-    dirs = np.stack([xv, yv, -np.ones_like(xv) * f], axis=-1)
-    dirs = dirs / np.linalg.norm(dirs, axis=-1, keepdims=True)  # Normalize
-    
-    # Step 2: Rotate direction vectors to align with theta, phi
-    def rotate(dirs, theta, phi):
-        # Rotation around Y by theta (azimuth)
-        Ry = np.array([
-            [np.cos(theta), 0, np.sin(theta)],
-            [0, 1, 0],
-            [-np.sin(theta), 0, np.cos(theta)]
-        ])
-        # Rotation around X by phi (elevation)
-        Rx = np.array([
-            [1, 0, 0],
-            [0, np.cos(phi), -np.sin(phi)],
-            [0, np.sin(phi),  np.cos(phi)]
-        ])
-        R = Ry @ Rx  # Back to original order - let's test this first
-        shape = dirs.shape
-        dirs_flat = dirs.reshape(-1, 3)
-        dirs_rot = dirs_flat @ R.T
-        return dirs_rot.reshape(shape)
-    
-    dirs_world = rotate(dirs, theta_center, phi_center)
-    xw, yw, zw = dirs_world[..., 0], dirs_world[..., 1], dirs_world[..., 2]
-    
-    # Step 3: Convert to spherical coordinates
-    theta = np.arctan2(xw, -zw)
-    phi = np.arcsin(yw)
-    
-    # Step 4: Map to equirectangular image coordinates
-    u = (theta + np.pi) / (2 * np.pi) * w_equi
-    v = (np.pi/2 - phi) / np.pi * h_equi
-    
-    # Step 5: Sample using bilinear interpolation
-    map_x = u.astype(np.float32)
-    map_y = v.astype(np.float32)
-    persp_img = cv2.remap(equirect_img, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
-    
-    return persp_img
+    # Test with center of image (should return camera yaw/pitch exactly)
+    center_x, center_y = perspective_width/2, perspective_height/2
+    yaw_center, pitch_center = yolo_box_to_yaw_pitch(center_x-1, center_y-1, center_x+1, center_y+1,
+                                                           perspective_width, perspective_height,
+                                                           camera_yaw, camera_pitch, camera_fov)
+    print(f"Center test: Yaw={yaw_center:.2f}° (should be {camera_yaw}°), Pitch={pitch_center:.2f}° (should be {camera_pitch}°)")

@@ -1,6 +1,6 @@
 import cv2
-from EquirectProcessor import EquirectProcessor, compute_mapping_tables
-from coordiante_conversion import perspective_from_equirect, pixel_to_spherical
+from EquirectProcessor import EquirectProcessor, remap_single_view
+from coordiante_conversion import yolo_box_to_yaw_pitch
 from util import pick_file_from_directory, replace_immediate_parent
 from ultralytics import YOLO
 
@@ -86,14 +86,10 @@ while True:
                     print(f'Found person in view {view_name} with confidence {box.conf.item()}.2f at frame {frame_count}')
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
 
-                    x_center = abs(x1 + x2) / 2
-                    y_center = abs(y1 + y2) / 2
-
-                    theta, phi = pixel_to_spherical(x_center, y_center, output_width, output_height, FOV, view_name)
-                    
+                    yaw, pitch = yolo_box_to_yaw_pitch(x1, y1, x2, y2, output_width, output_height, VIEWS[view_name][0], VIEWS[view_name][1], FOV)
                     
                     # Generate the detection-centered view
-                    output_frame = perspective_from_equirect(frame, theta, phi, FOV, output_width, output_height)
+                    output_frame = remap_single_view(frame, yaw, pitch, FOV, OUTPUT_SIZE)
 
                     # Re-run detection on the new centered view to get correct coordinates
                     new_results = model(output_frame, verbose=False)
