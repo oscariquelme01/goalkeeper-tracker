@@ -9,6 +9,6 @@ env
 # device network mount
 laptop_shared
 
-# video sources
+# video sources & results
 sources
-
+edited
