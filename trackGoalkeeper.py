@@ -1,6 +1,7 @@
 import cv2
 from EquirectProcessor import EquirectProcessor, remap_single_view
 from coordiante_conversion import yolo_box_to_yaw_pitch
+from object_distance import calculate_distance
 from util import pick_file_from_directory, replace_immediate_parent
 from ultralytics import YOLO
 
@@ -75,7 +76,7 @@ while True:
     # Process frame retrieving all the views
     views = processor.process_frame(frame)
     
-    for view_name, view in views.items():
+    for view_name, view in views.items(): #type: ignore
         if person_detected:  # Only process first detection
             break
             
@@ -83,7 +84,6 @@ while True:
         for result in results:
             for box in result.boxes:
                 if box.cls.item() == 0 and box.conf.item() > 0.7:
-                    print(f'Found person in view {view_name} with confidence {box.conf.item()}.2f at frame {frame_count}')
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
 
                     yaw, pitch = yolo_box_to_yaw_pitch(x1, y1, x2, y2, output_width, output_height, VIEWS[view_name][0], VIEWS[view_name][1], FOV)
@@ -98,12 +98,15 @@ while True:
                             if new_box.cls.item() == 0 and new_box.conf.item() > 0.7:  # Person detected in new view
                                 nx1, ny1, nx2, ny2 = new_box.xyxy[0].cpu().numpy()
                                 new_conf = new_box.conf.item()
+
+                                distance = calculate_distance(nx1, ny1, nx2, ny2, model.names[new_box.cls.item()])
+                                print(f'Found person in view {view_name} with confidence {new_box.conf.item()}.2f at frame {frame_count} and distance {distance}')
                                 
                                 # Draw bounding box on the new output frame
                                 cv2.rectangle(output_frame, 
                                              (int(nx1), int(ny1)), (int(nx2), int(ny2)), 
                                              (0, 255, 0), 2)
-                                cv2.putText(output_frame, f'Person {new_conf:.2f}', 
+                                cv2.putText(output_frame, f'Person {new_conf:.2f} @ {distance}', 
                                            (int(nx1), int(ny1-10)), 
                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                                 break
