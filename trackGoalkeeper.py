@@ -121,8 +121,8 @@ while True:
     if not person_detected:
         output_frame = last_output_frame if last_output_frame is not None else views[default_view_name] #type: ignore
         
-        stringythingy = 'last output frame' if last_output_frame is not None else 'default output frame'
-        print('no person detected, defaulting to ' + stringythingy)
+        no_person_detected_debug_str = 'last output frame' if last_output_frame is not None else 'default output frame'
+        print('no person detected, defaulting to ' + no_person_detected_debug_str)
     
     # Always write exactly one perspective frame
     out.write(output_frame)
