@@ -42,7 +42,10 @@ def yolo_box_to_yaw_pitch(x1, y1, x2, y2, perspective_width, perspective_height,
     target_yaw = target_yaw % 360
     
     # Clamp pitch to valid range
-    target_pitch = np.clip(target_pitch, -90, 90)
+    if target_pitch > 90:
+        target_pitch = 180 - target_pitch
+    elif target_pitch < -90:
+        target_pitch = -180 - target_pitch  
     
     return target_yaw, target_pitch
 
