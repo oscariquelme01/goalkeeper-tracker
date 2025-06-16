@@ -12,6 +12,9 @@ VIEWS = {
     "right": (90, 0),
     "back": (180, 0),
     "left": (-90, 0),
+    "front": (0, 0),
+    "bottom": (0, -90),
+    "top": (0, 90)
 }
 
 # Configuration
@@ -61,10 +64,13 @@ frame_count = 0
 import time
 start_time = time.time()
 
-# Default output: use a standard view 
-default_view_name = 'front'  # or whichever view you prefer as default
+# Default output for the first frames before the person is detected
+default_view_name = 'front'
 last_output_frame = None
 output_frame = None
+
+# Save the yaw and pitch calculated from the previous frame to ensure that there are no re-writes of the same frame
+last_yaw, last_pitch = 0,0
 
 while True:
     ret, frame = cap.read()
@@ -87,9 +93,10 @@ while True:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
 
                     yaw, pitch = yolo_box_to_yaw_pitch(x1, y1, x2, y2, output_width, output_height, VIEWS[view_name][0], VIEWS[view_name][1], FOV)
+                    last_yaw, last_pitch = yaw, pitch
                     
                     # Generate the detection-centered view
-                    output_frame = remap_single_view(frame, yaw, pitch, FOV, OUTPUT_SIZE)
+                    output_frame = remap_single_view(frame, yaw, -pitch, FOV, OUTPUT_SIZE)
 
                     # Re-run detection on the new centered view to get correct coordinates
                     new_results = model(output_frame, verbose=False)
@@ -100,7 +107,7 @@ while True:
                                 new_conf = new_box.conf.item()
 
                                 distance = calculate_distance(nx1, ny1, nx2, ny2, model.names[new_box.cls.item()])
-                                print(f'Found person in view {view_name} with confidence {new_box.conf.item()}.2f at frame {frame_count} and distance {distance}')
+                                print(f'Found person in view {view_name} with confidence {new_box.conf.item()}.2f at frame {frame_count} and distance {distance}. Yaw: {yaw}deg Pitch: {pitch}deg')
                                 
                                 # Draw bounding box on the new output frame
                                 cv2.rectangle(output_frame, 
@@ -119,9 +126,9 @@ while True:
     
     # If no person detected, use the default view
     if not person_detected:
-        output_frame = last_output_frame if last_output_frame is not None else views[default_view_name] #type: ignore
+        output_frame = remap_single_view(frame, last_yaw, -last_pitch) if last_output_frame is not None else views[default_view_name] #type: ignore
         
-        no_person_detected_debug_str = 'last output frame' if last_output_frame is not None else 'default output frame'
+        no_person_detected_debug_str = f'last output frame with yaw {last_yaw}deg & pitch {last_pitch}deg' if last_output_frame is not None else f'default output frame: {default_view_name}'
         print('no person detected, defaulting to ' + no_person_detected_debug_str)
     
     # Always write exactly one perspective frame
