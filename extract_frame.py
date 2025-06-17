@@ -83,8 +83,10 @@ def extract_multiple_frames(video_path, frame_numbers, output_dir="extracted_fra
 # Example usage
 if __name__ == "__main__":
     # Example 1: Extract a single frame
-    video_file = pick_file_from_directory('edited')
-    # frame_to_extract = int(input('Pick frame to extract: '))
-    # 
-    # extract_frame(video_file, frame_to_extract)
-    extract_multiple_frames(video_file, [131, 132, 133, 134])
+    video_file = pick_file_from_directory('perspective')
+
+    frame_to_extract = int(input('Pick frame to extract: '))
+    extract_frame(video_file, frame_to_extract)
+    cv2.waitKey(0)
+
+    # extract_multiple_frames(video_file, [131, 132, 133, 134])
