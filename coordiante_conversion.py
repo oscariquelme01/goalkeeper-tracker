@@ -50,17 +50,6 @@ def yolo_box_to_yaw_pitch(x1, y1, x2, y2, perspective_width, perspective_height,
     return target_yaw, target_pitch
 
 
-def equirectangular_to_pixel(yaw, pitch, equirect_width, equirect_height):
-    """Convert yaw/pitch to equirectangular pixel coordinates."""
-    u = yaw / 360.0
-    v = (90 - pitch) / 180.0  # Note: 90 - pitch for typical equirectangular format
-    
-    x = u * equirect_width
-    y = v * equirect_height
-    
-    return x, y
-
-
 # Test both methods
 if __name__ == "__main__":
     # YOLO bounding box

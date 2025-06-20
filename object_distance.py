@@ -1,14 +1,6 @@
 object_sizes = {
             'person': 1.7,      # Average human height
-            'car': 4.5,         # Average car length
-            'bicycle': 1.8,     # Average bicycle length
-            'motorcycle': 2.2,  # Average motorcycle length
-            'bus': 12.0,        # Average bus length
-            'truck': 8.0,       # Average truck length
-            'bottle': 0.25,     # Average bottle height
-            'chair': 0.8,       # Average chair height
-            'dog': 0.6,         # Average dog height
-            'cat': 0.25,        # Average cat height
+            'sports ball': 0.22 # Average football diameter
         }
 
 def calculate_distance(x1, y1, x2, y2, class_name):

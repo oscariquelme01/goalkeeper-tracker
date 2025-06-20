@@ -35,8 +35,8 @@ VIEWS = {
     "back": (180, 0),
     "left": (270, 0),
     "front": (0, 0),
-    "bottom": (0, -90),
-    "top": (0, 90)
+    # "bottom": (0, -90),
+    # "top": (0, 90)
 }
 
 # Configuration
@@ -120,8 +120,7 @@ while True:
                         'view_name': view_name
                     })
                     
-    if frame_count == 132 or frame_count == 131:
-        print(all_detections)
+    print(all_detections)
 
 
     # Generate the detection-centered view
@@ -141,7 +140,7 @@ while True:
                     distance = calculate_distance(nx1, ny1, nx2, ny2, model.names[new_box.cls.item()])
                     view_name = choosen_deteciton['view_name']
 
-                    print(f'Frame {frame_count}: found person in view {view_name} with confidence {new_box.conf.item()}.2f at frame {frame_count} and distance {distance}. Yaw: {current_yaw}deg Pitch: {current_pitch}deg')
+                    # print(f'Frame {frame_count}: found person in view {view_name} with confidence {new_box.conf.item()}.2f at frame {frame_count} and distance {distance}. Yaw: {current_yaw}deg Pitch: {current_pitch}deg')
                     
                     # Draw bounding box on the new output frame
                     cv2.rectangle(output_frame, 
